@@ -2,6 +2,7 @@ export default function PriorityDashboard({ dispatch, modelMetrics }) {
   const prediction = dispatch?.prediction;
   const score = prediction?.priority_score ?? 0;
   const probability = Math.round((prediction?.escalation_probability ?? 0) * 100);
+  const responderFit = Math.round(dispatch?.responder_options?.[0]?.score ?? 0);
 
   return (
     <section className="widget priority-widget">
@@ -22,7 +23,7 @@ export default function PriorityDashboard({ dispatch, modelMetrics }) {
         <div className="risk-bars">
           <MetricBar label="Escalation" value={probability} />
           <MetricBar label="Priority" value={Math.round(score)} />
-          <MetricBar label="Responder Fit" value={88} />
+          <MetricBar label="Responder Fit" value={responderFit} />
         </div>
       </div>
 
@@ -33,19 +34,6 @@ export default function PriorityDashboard({ dispatch, modelMetrics }) {
             <strong>{metric.value}</strong>
           </div>
         ))}
-      </div>
-
-      <div className="stacked-chart" aria-label="Case priority distribution">
-        <div style={{ "--height": "76%", "--c": "#d94f5c" }} />
-        <div style={{ "--height": "58%", "--c": "#e7b94d" }} />
-        <div style={{ "--height": "42%", "--c": "#37b9a1" }} />
-        <div style={{ "--height": "24%", "--c": "#3187b8" }} />
-      </div>
-      <div className="chart-labels">
-        <span>Critical</span>
-        <span>High</span>
-        <span>Med</span>
-        <span>Low</span>
       </div>
     </section>
   );

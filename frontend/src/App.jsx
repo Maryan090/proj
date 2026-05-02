@@ -1,35 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
+import { fetchResponderCases } from "./api/caseApi.js";
 import { fetchDispatch } from "./api/dispatchApi.js";
+import { fetchMlMetrics } from "./api/mlApi.js";
 import { fetchResponders } from "./api/responderApi.js";
 import PriorityDashboard from "./components/PriorityDashboard.jsx";
 import DispatchSummary from "./components/DispatchSummary.jsx";
 import ResponderLogin from "./components/ResponderLogin.jsx";
 import ResponderCaseQueue from "./components/ResponderCaseQueue.jsx";
 import ResponderAnalytics from "./components/ResponderAnalytics.jsx";
+import OperationsOverview from "./components/OperationsOverview.jsx";
 import LoginPage from "./components/LoginPage.jsx";
-import { activeCases, responderProfiles as fallbackResponderProfiles } from "./data/responderCases.js";
-
-const DEFAULT_SIGNAL = "SIG-0000001";
-const DEFAULT_INCIDENT = "power_outage";
-
-const modelMetrics = [
-  { label: "Escalation F1", value: "0.881", tone: "teal" },
-  { label: "Escalation ROC", value: "0.877", tone: "blue" },
-  { label: "Priority R2", value: "0.801", tone: "gold" },
-  { label: "Top-3 Match", value: "0.879", tone: "green" },
-];
 
 export default function App() {
-  const [signalId, setSignalId] = useState(DEFAULT_SIGNAL);
-  const [incidentType, setIncidentType] = useState(DEFAULT_INCIDENT);
+  const [signalId, setSignalId] = useState("");
   const [dispatch, setDispatch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [responderProfiles, setResponderProfiles] = useState(fallbackResponderProfiles);
-  const [selectedResponderId, setSelectedResponderId] = useState(fallbackResponderProfiles[0].responder_id);
+  const [responderProfiles, setResponderProfiles] = useState([]);
+  const [selectedResponderId, setSelectedResponderId] = useState("");
+  const [relevantCases, setRelevantCases] = useState([]);
+  const [metrics, setMetrics] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  async function loadDispatch(nextSignalId = signalId, nextIncidentType = incidentType) {
+  async function loadDispatch(nextSignalId, nextIncidentType) {
     setLoading(true);
     setError("");
     try {
@@ -43,46 +36,64 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadDispatch(DEFAULT_SIGNAL, DEFAULT_INCIDENT);
-  }, []);
-
-  useEffect(() => {
     async function loadResponders() {
       try {
         const responders = await fetchResponders();
         if (responders.length) {
           setResponderProfiles(responders);
-          if (!responders.some((responder) => responder.responder_id === selectedResponderId)) {
+          if (!selectedResponderId || !responders.some((responder) => responder.responder_id === selectedResponderId)) {
             setSelectedResponderId(responders[0].responder_id);
           }
         }
-      } catch {
-        setResponderProfiles(fallbackResponderProfiles);
+      } catch (requestError) {
+        setError(requestError.message);
       }
     }
 
     loadResponders();
   }, [selectedResponderId]);
 
+  useEffect(() => {
+    async function loadMetrics() {
+      try {
+        setMetrics(await fetchMlMetrics());
+      } catch {
+        setMetrics(null);
+      }
+    }
+
+    loadMetrics();
+  }, []);
+
   const selectedResponder = useMemo(
     () => responderProfiles.find((responder) => responder.responder_id === selectedResponderId) || responderProfiles[0],
     [selectedResponderId],
   );
-  const relevantCases = useMemo(
-    () =>
-      activeCases
-        .filter((caseItem) => caseItem.recommended_profession === selectedResponder.profession)
-        .sort((a, b) => b.priority_score - a.priority_score),
-    [selectedResponder],
-  );
+  const modelMetrics = useMemo(() => buildModelMetrics(metrics), [metrics]);
   const dashboardStats = useMemo(
     () => buildDashboardStats(dispatch, relevantCases, selectedResponder),
     [dispatch, relevantCases, selectedResponder],
   );
 
+  useEffect(() => {
+    async function loadRelevantCases() {
+      if (!isLoggedIn || !selectedResponder?.responder_id) return;
+      setError("");
+      try {
+        const cases = await fetchResponderCases(selectedResponder.responder_id);
+        setRelevantCases(cases);
+        if (!signalId && cases[0]) setSignalId(cases[0].signal_id);
+      } catch (requestError) {
+        setError(requestError.message);
+        setRelevantCases([]);
+      }
+    }
+
+    loadRelevantCases();
+  }, [isLoggedIn, selectedResponder?.responder_id]);
+
   function handleCaseSelect(caseItem) {
     setSignalId(caseItem.signal_id);
-    setIncidentType(caseItem.incident_type);
     loadDispatch(caseItem.signal_id, caseItem.incident_type);
   }
 
@@ -147,44 +158,70 @@ export default function App() {
           onSelectCase={handleCaseSelect}
           loading={loading}
         />
-        <PriorityDashboard dispatch={dispatch} modelMetrics={modelMetrics} />
-        <DispatchSummary summary={dispatch?.dispatch_summary} />
+        <OperationsOverview cases={relevantCases} selectedSignalId={signalId} />
+        <DispatchSummary
+          cases={relevantCases}
+          responder={selectedResponder}
+          selectedSignalId={signalId}
+          summary={dispatch?.dispatch_summary}
+        />
       </section>
     </main>
   );
 }
 
 function buildDashboardStats(dispatch, relevantCases, selectedResponder) {
+  const selectedCase = relevantCases.find((caseItem) => caseItem.signal_id === dispatch?.signal?.signal_id) || relevantCases[0];
   const score = dispatch?.prediction?.priority_score ?? 0;
   const responders = dispatch?.responder_options || [];
   const nearest = responders[0]?.distance_miles ?? 0;
-  const probability = Math.round((dispatch?.prediction?.escalation_probability ?? 0) * 100);
+  const probability = Math.round((dispatch?.prediction?.escalation_probability ?? selectedCase?.escalation_probability / 100 ?? 0) * 100);
   const critical = relevantCases.filter((caseItem) => caseItem.priority_score >= 85).length;
+  const selectedScore = score || selectedCase?.priority_score || 0;
+  const selectedProbability = probability || selectedCase?.escalation_probability || 0;
 
   return [
     {
       label: "Relevant Cases",
       value: relevantCases.length || "--",
-      detail: selectedResponder.profession,
-      spark: "86%",
+      detail: selectedResponder?.profession || "loading responders",
+      spark: `${Math.min(95, Math.max(18, relevantCases.length * 16))}%`,
     },
     {
       label: "Critical Now",
       value: critical || "--",
       detail: "sorted by ML priority",
-      spark: "74%",
+      spark: `${Math.min(95, Math.max(18, critical * 24))}%`,
     },
     {
       label: "Selected Priority",
-      value: score ? score.toFixed(1) : "--",
-      detail: dispatch?.prediction?.priority_level?.toUpperCase() || "WAITING",
-      spark: "64%",
+      value: selectedScore ? selectedScore.toFixed(1) : "--",
+      detail: dispatch?.prediction?.priority_level?.toUpperCase() || selectedCase?.priority_level?.toUpperCase() || "WAITING",
+      spark: `${Math.min(95, Math.max(18, selectedScore))}%`,
     },
     {
       label: "Selected Escalation",
-      value: `${probability}%`,
+      value: `${selectedProbability}%`,
       detail: nearest ? `${nearest} mi closest` : "waiting on responder match",
-      spark: "52%",
+      spark: `${Math.min(95, Math.max(18, selectedProbability))}%`,
     },
+  ];
+}
+
+function buildModelMetrics(metrics) {
+  if (!metrics?.models) {
+    return [
+      { label: "Escalation F1", value: "--", tone: "teal" },
+      { label: "Escalation ROC", value: "--", tone: "blue" },
+      { label: "Priority R2", value: "--", tone: "gold" },
+      { label: "Top-3 Match", value: "--", tone: "green" },
+    ];
+  }
+
+  return [
+    { label: "Escalation F1", value: metrics.models.escalation_required.f1.toFixed(3), tone: "teal" },
+    { label: "Escalation ROC", value: metrics.models.escalation_required.roc_auc.toFixed(3), tone: "blue" },
+    { label: "Priority R2", value: metrics.models.priority_score_assigned.r2.toFixed(3), tone: "gold" },
+    { label: "Top-3 Match", value: metrics.models.matched_responder_profession.top_3_accuracy.toFixed(3), tone: "green" },
   ];
 }

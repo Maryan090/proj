@@ -13,19 +13,19 @@ export async function handleSignalIngest(_request, response, context) {
 
 export async function handleSignalQueueList(_request, response, context) {
   response.json({
-    signals: listSignals({ status: context.query.get("status") || undefined }),
+    signals: await listSignals({ status: context.query.get("status") || undefined }),
   });
 }
 
 export async function handleSignalQueueProcess(_request, response, context) {
   const eventId = context.params.event_id;
-  const queuedSignal = markSignalProcessing(eventId);
+  const queuedSignal = await markSignalProcessing(eventId);
   const dispatchResult = await runDispatchFlow({
     signalId: queuedSignal.signal_id,
     incidentType: queuedSignal.incident_type,
     limit: Number(context.body?.limit || 3),
   });
-  const updatedSignal = markSignalProcessed(eventId, dispatchResult);
+  const updatedSignal = await markSignalProcessed(eventId, dispatchResult);
 
   response.json({
     signal_event: updatedSignal,

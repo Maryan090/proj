@@ -29,6 +29,8 @@ If `OPENAI_API_KEY` is not set, the backend uses a local mock summary so the dem
 - `GET /api/signal-events`: list queued/active/prioritized signal events.
 - `POST /api/signal-events/:event_id/process`: process one queued signal through ML, responder matching, and LLM summary.
 - `GET /api/responders`: list responder profiles for frontend login.
+- `GET /api/responder-cases?responder_id=...`: list active/prioritized queue cases relevant to one responder.
+- `GET /api/ml/metrics`: return saved ML model metrics from `backend/ml/models/metrics.json`.
 - `POST /api/dispatch`: run the full dispatch flow.
 - `GET /api/dispatch/:signal_id`: quick demo route for the full dispatch flow.
 

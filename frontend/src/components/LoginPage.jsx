@@ -28,7 +28,7 @@ export default function LoginPage({ responders, selectedResponderId, onResponder
         <p className="eyebrow">Responder Access</p>
         <h1>AI Dispatch Workspace</h1>
         <p className="login-copy">
-          Select a stored responder profile to open a dashboard filtered to the people most relevant
+          Enter your responder name to open a dashboard filtered to the people most relevant
           to that responder's profession and capabilities.
         </p>
 
@@ -38,12 +38,13 @@ export default function LoginPage({ responders, selectedResponderId, onResponder
             value={nameQuery}
             onChange={handleQueryChange}
             placeholder="Enter responder name"
+            disabled={!responders.length}
           />
         </label>
         {loginError ? <p className="error-message">{loginError}</p> : null}
 
-        <button type="button" onClick={handleLoginClick}>
-          Open Responder Dashboard
+        <button type="button" onClick={handleLoginClick} disabled={!responders.length}>
+          {responders.length ? "Open Responder Dashboard" : "Loading Responders"}
         </button>
       </section>
     </main>

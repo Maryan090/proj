@@ -4,11 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "../..");
-const dataDir = resolve(projectRoot, "data");
+export const dataDir = resolve(projectRoot, "data");
 
 const cache = new Map();
 
-function parseCsv(text) {
+export function parseCsv(text) {
   const rows = [];
   let row = [];
   let value = "";
@@ -48,6 +48,16 @@ function parseCsv(text) {
   );
 }
 
+export function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const text = Array.isArray(value) ? value.join("|") : String(value);
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function toCsv(rows, headers = Object.keys(rows[0] || {})) {
+  return `${[headers.join(","), ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))].join("\n")}\n`;
+}
+
 function coerceValue(value) {
   if (value === "true") return true;
   if (value === "false") return false;
@@ -81,6 +91,10 @@ export async function getShelters() {
 
 export async function getHistoricalCases() {
   return loadCsv("historical_cases.csv");
+}
+
+export async function getIncomingSignals() {
+  return loadCsv("incoming_signals.csv");
 }
 
 export function clearDataCache() {

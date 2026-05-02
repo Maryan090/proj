@@ -10,7 +10,7 @@ export default function ResponderAnalytics({ cases, responder }) {
     <section className="widget responder-analytics-widget">
       <div className="widget-heading">
         <p>Relevant Case Analytics</p>
-        <span>{responder.profession}</span>
+        <span>{responder?.profession || "loading"}</span>
       </div>
 
       <div className="analytics-split">
@@ -27,6 +27,7 @@ export default function ResponderAnalytics({ cases, responder }) {
       </div>
 
       <div className="horizontal-chart">
+        {!Object.keys(incidentCounts).length ? <p className="empty-state">No matching active incidents.</p> : null}
         {Object.entries(incidentCounts).map(([incident, count]) => (
           <div key={incident}>
             <span>{incident.replaceAll("_", " ")}</span>

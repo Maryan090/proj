@@ -5,6 +5,9 @@ import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 import { handleDispatchCreate, handleDispatchPreview } from "./routes/dispatchRoutes.js";
+import { handleResponderChat } from "./routes/llmRoutes.js";
+import { handleMlMetrics } from "./routes/mlRoutes.js";
+import { handleResponderCases } from "./routes/responderCaseRoutes.js";
 import { handleResponderList } from "./routes/responderRoutes.js";
 import {
   handleSignalIngest,
@@ -27,6 +30,9 @@ const routes = [
   ["GET", /^\/api\/signal-events$/, handleSignalQueueList],
   ["POST", /^\/api\/signal-events\/([^/]+)\/process$/, handleSignalQueueProcess, ["event_id"]],
   ["GET", /^\/api\/responders$/, handleResponderList],
+  ["GET", /^\/api\/responder-cases$/, handleResponderCases],
+  ["GET", /^\/api\/ml\/metrics$/, handleMlMetrics],
+  ["POST", /^\/api\/llm\/chat$/, handleResponderChat],
   ["POST", /^\/api\/dispatch$/, handleDispatchCreate],
   ["GET", /^\/api\/dispatch\/([^/]+)$/, handleDispatchPreview, ["signal_id"]],
 ];

@@ -1,8 +1,36 @@
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+import { dataDir, getIncomingSignals, toCsv } from "./dataService.js";
 import { buildSignalEvent } from "./signalLookupService.js";
 
 const DEDUPE_WINDOW_MS = 15 * 60 * 1000;
 const signalQueue = [];
 let eventCounter = 1;
+let initialized = false;
+
+const SIGNAL_HEADERS = [
+  "event_id",
+  "signal_id",
+  "customer_id",
+  "incident_type",
+  "first_received_at",
+  "last_seen_at",
+  "signal_count",
+  "source_gateway",
+  "device_latitude",
+  "device_longitude",
+  "battery_level",
+  "signal_strength",
+  "status",
+  "processed_at",
+  "priority_score",
+  "priority_level",
+  "escalation_probability",
+  "escalation_required",
+  "recommended_responder_profession",
+  "assigned_responder_id",
+];
 
 export async function ingestSignal({
   signal_id,
@@ -13,6 +41,7 @@ export async function ingestSignal({
   battery_level = null,
   signal_strength = "unknown",
 } = {}) {
+  await ensureQueueLoaded();
   const signalEvent = await buildSignalEvent(signal_id, incident_type);
   const now = new Date();
   const existing = findRecentActiveSignal(signalEvent.signal_id, now);
@@ -25,6 +54,7 @@ export async function ingestSignal({
     existing.signal_strength = signal_strength || existing.signal_strength;
     existing.device_latitude = device_latitude ?? existing.device_latitude;
     existing.device_longitude = device_longitude ?? existing.device_longitude;
+    await persistQueue();
     return { signal_event: existing, deduplicated: true };
   }
 
@@ -44,34 +74,41 @@ export async function ingestSignal({
     status: "queued",
     processed_at: null,
     priority_score: null,
+    priority_level: null,
+    escalation_probability: null,
     escalation_required: null,
+    recommended_responder_profession: null,
     assigned_responder_id: null,
     customer: signalEvent.customer,
   };
 
   signalQueue.unshift(queuedSignal);
+  await persistQueue();
   return { signal_event: queuedSignal, deduplicated: false };
 }
 
-export function listSignals({ status } = {}) {
+export async function listSignals({ status } = {}) {
+  await ensureQueueLoaded();
   return signalQueue.filter((signal) => !status || signal.status === status);
 }
 
-export function getSignalEvent(eventId) {
+export async function getSignalEvent(eventId) {
+  await ensureQueueLoaded();
   return signalQueue.find((signal) => signal.event_id === eventId);
 }
 
-export function markSignalProcessing(eventId) {
-  const signal = getSignalEvent(eventId);
+export async function markSignalProcessing(eventId) {
+  const signal = await getSignalEvent(eventId);
   if (!signal) {
     throw Object.assign(new Error(`No signal event found for ${eventId}`), { statusCode: 404 });
   }
   signal.status = "processing";
+  await persistQueue();
   return signal;
 }
 
-export function markSignalProcessed(eventId, dispatchResult) {
-  const signal = getSignalEvent(eventId);
+export async function markSignalProcessed(eventId, dispatchResult) {
+  const signal = await getSignalEvent(eventId);
   if (!signal) {
     throw Object.assign(new Error(`No signal event found for ${eventId}`), { statusCode: 404 });
   }
@@ -79,9 +116,53 @@ export function markSignalProcessed(eventId, dispatchResult) {
   signal.status = "prioritized";
   signal.processed_at = new Date().toISOString();
   signal.priority_score = dispatchResult.prediction?.priority_score ?? null;
+  signal.priority_level = dispatchResult.prediction?.priority_level ?? null;
+  signal.escalation_probability = dispatchResult.prediction?.escalation_probability
+    ? Math.round(dispatchResult.prediction.escalation_probability * 100)
+    : null;
   signal.escalation_required = dispatchResult.prediction?.escalation_required ?? null;
+  signal.recommended_responder_profession = dispatchResult.prediction?.recommended_responder_profession ?? null;
   signal.assigned_responder_id = dispatchResult.responder_options?.[0]?.responder_id ?? null;
+  await persistQueue();
   return signal;
+}
+
+export async function listResponderCases(responder) {
+  const signals = await listSignals();
+  return signals
+    .filter((signal) => signal.recommended_responder_profession === responder.profession)
+    .sort((a, b) => Number(b.priority_score || 0) - Number(a.priority_score || 0));
+}
+
+async function ensureQueueLoaded() {
+  if (initialized) return;
+  const rows = await getIncomingSignals();
+  signalQueue.splice(0, signalQueue.length, ...rows.map(normalizeSignalRow));
+  const maxEventNumber = signalQueue.reduce((max, signal) => {
+    const eventNumber = Number(String(signal.event_id).replace("EVT-", ""));
+    return Number.isFinite(eventNumber) ? Math.max(max, eventNumber) : max;
+  }, 0);
+  eventCounter = maxEventNumber + 1;
+  initialized = true;
+}
+
+async function persistQueue() {
+  const rows = signalQueue.map((signal) =>
+    Object.fromEntries(SIGNAL_HEADERS.map((header) => [header, signal[header] ?? ""])),
+  );
+  await writeFile(resolve(dataDir, "incoming_signals.csv"), toCsv(rows, SIGNAL_HEADERS), "utf8");
+}
+
+function normalizeSignalRow(row) {
+  return {
+    ...row,
+    signal_count: Number(row.signal_count || 1),
+    priority_score: row.priority_score === "" ? null : Number(row.priority_score),
+    escalation_probability:
+      row.escalation_probability === "" ? null : Number(row.escalation_probability),
+    escalation_required:
+      row.escalation_required === "" ? null : row.escalation_required === true || row.escalation_required === "true",
+  };
 }
 
 function findRecentActiveSignal(signalId, now) {

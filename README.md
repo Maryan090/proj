@@ -57,7 +57,9 @@ Hackathon project for receiving a device `signal_id`, matching it to a disabled 
 - `frontend/src/main.jsx`: React mount file that renders the app.
 - `frontend/src/App.jsx`: Main responder dashboard screen. Loads dispatch data, manages responder login state, filters relevant cases, and lays out visualization widgets.
 - `frontend/src/api/dispatchApi.js`: API client for calling the backend dispatch endpoint.
-- `frontend/src/data/responderCases.js`: Frontend demo case queue and responder profiles. This gives UI teammates a safe place to change dashboard demo content before a full backend queue endpoint exists.
+- `frontend/src/api/responderApi.js`: API client for loading responder profiles from the backend CSV database.
+- `frontend/src/api/caseApi.js`: API client for loading responder-specific active cases from the backend signal queue.
+- `frontend/src/api/mlApi.js`: API client for loading saved ML model metrics from the backend.
 - `frontend/src/components/LoginPage.jsx`: First screen of the app. Uses stored fake responder profiles as login options and opens the responder-specific dashboard.
 - `frontend/src/components/ResponderLogin.jsx`: Responder workspace selector. Simulates responder login and filters the dashboard to that responder's profession/capabilities.
 - `frontend/src/components/ResponderAnalytics.jsx`: Analytics widget for cases relevant to the logged-in responder, including critical case counts and incident-type bars.
@@ -115,6 +117,8 @@ Useful API routes:
 - `GET /api/signal-events`
 - `POST /api/signal-events/:event_id/process`
 - `GET /api/responders`
+- `GET /api/responder-cases?responder_id=RESP-000614`
+- `GET /api/ml/metrics`
 - `POST /api/dispatch` with `{ "signal_id": "SIG-0000001", "incident_type": "power_outage", "limit": 3 }`
 - `GET /api/dispatch/SIG-0000001?incident_type=power_outage&limit=3`
 
